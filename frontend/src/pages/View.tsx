@@ -286,7 +286,7 @@ export function ViewPage() {
             return (
               <div key={c.category} className="summary-card">
                 <div className="sc-label">{c.category}</div>
-                <div className="sc-value" style={{ fontSize: 18 }}>{fmtAmt(c.total)}</div>
+                <div className="sc-value">{fmtAmt(c.total)}</div>
                 {delta != null && (
                   <div className={`sc-sub ${delta > 0 ? 'sc-delta-up' : 'sc-delta-down'}`}>
                     {delta > 0 ? '▲' : '▼'} {fmtAmt(Math.abs(delta))} MoM
@@ -347,7 +347,7 @@ export function ViewPage() {
                         ...(k === 'amount' ? { textAlign: 'right' as const } : {}),
                         ...(COL_WIDTH[k] ? { width: COL_WIDTH[k] } : {}),
                       }}>
-                      {label}{arr(k)}
+                      {label}<span className="sort-icon">{arr(k)}</span>
                     </th>
                   ))}
                   <th style={{ textAlign: 'right' }}>Monthly</th>
@@ -443,9 +443,10 @@ export function ViewPage() {
                         {fmtDateShort(row.entry_date)}
                       </td>
                       <td>
-                        <div style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div className="merchant-name" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {row.merchant ?? row.entry_text}
                         </div>
+                        {row.merchant && <div className="merchant-entry" title={row.entry_text}>{row.entry_text}</div>}
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <input type="number" className="field-input" style={{ width: 90 }} step="0.01"

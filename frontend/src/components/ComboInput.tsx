@@ -55,6 +55,15 @@ export function ComboInput({ value, onChange, options, placeholder, className, s
     setOpen(true)
   }
 
+  function toggleDropdown() {
+    if (open) {
+      setOpen(false)
+    } else {
+      inputRef.current?.focus()
+      openDropdown()
+    }
+  }
+
   function commit(val: string) {
     onChange(val)
     setQuery(val)
@@ -106,7 +115,14 @@ export function ComboInput({ value, onChange, options, placeholder, className, s
           }, 120)
         }}
       />
-      {!disabled && <span className="combo-arrow">▾</span>}
+      {!disabled && (
+        <span
+          className="combo-arrow"
+          onMouseDown={e => { e.preventDefault(); toggleDropdown() }}
+        >
+          ▾
+        </span>
+      )}
       {open && !disabled && pos && createPortal(
         <div
           ref={dropdownRef}
