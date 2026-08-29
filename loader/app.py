@@ -13,7 +13,7 @@ import threading
 
 from dotenv import load_dotenv
 from datetime import date as _date, timedelta
-from flask import Flask, jsonify, redirect, url_for
+from flask import Flask, abort, jsonify, redirect, send_from_directory, url_for
 from auth_routes import auth_bp
 from token_auth import require_admin, _is_valid_admin_token, _is_valid_user_session
 from history import history_bp
@@ -33,6 +33,7 @@ load_dotenv()
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app = Flask(__name__, template_folder=os.path.join(_project_root, "templates"))
+_static_dist = os.path.join(_project_root, "static", "dist")
 
 import logging as _logging
 _secret = os.environ.get("SECRET_KEY")
@@ -75,9 +76,9 @@ def handle_http_exception(e):
 @app.route("/")
 def index():
     if _is_valid_user_session():
-        return redirect(url_for("shared.shared_page"))
+        return redirect("/shared")
     if _is_valid_admin_token():
-        return redirect(url_for("history.view_page"))
+        return redirect("/view")
     return redirect(url_for("auth.login_page"))
 
 
@@ -128,6 +129,19 @@ def _run_trigger():
             else f"{summary['processed']} transaction(s) processed."
         ),
     }), 200
+
+
+@app.route("/<path:path>")
+def spa_catch_all(path):
+    if path.startswith("api/") or path in ("login", "logout", "register", "trigger"):
+        abort(404)
+    candidate = os.path.join(_static_dist, path)
+    if os.path.isfile(candidate):
+        return send_from_directory(_static_dist, path)
+    index_path = os.path.join(_static_dist, "index.html")
+    if os.path.isfile(index_path):
+        return send_from_directory(_static_dist, "index.html")
+    abort(404)
 
 
 if __name__ == "__main__":

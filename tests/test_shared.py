@@ -289,9 +289,9 @@ class TestSharedSessionAuth:
         monkeypatch.setenv("ADMIN_TOKEN", "tok")
         monkeypatch.setenv("INVITE_CODE", "inv")
         with patch("db.get_connection") as mock_fn:
-            mock_conn, _ = _make_mock_conn()
+            mock_conn, _ = _make_mock_conn(fetchall=[])
             mock_fn.return_value = mock_conn
-            resp = user_client.get("/shared")
+            resp = user_client.get("/api/shared/fy-list")
         assert resp.status_code == 200
 
     def test_user_session_grants_api_access(self, user_client, monkeypatch):
@@ -304,12 +304,11 @@ class TestSharedSessionAuth:
                 resp = user_client.get("/api/shared?fy=2026")
         assert resp.status_code == 200
 
-    def test_no_session_no_token_redirects_page(self, no_auth_client, monkeypatch):
+    def test_no_session_no_token_blocks_page_api(self, no_auth_client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "tok")
         monkeypatch.setenv("INVITE_CODE", "inv")
-        resp = no_auth_client.get("/shared", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/login" in resp.headers["Location"]
+        resp = no_auth_client.get("/api/shared/fy-list")
+        assert resp.status_code == 401
 
     def test_no_session_no_token_blocks_api(self, no_auth_client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "tok")

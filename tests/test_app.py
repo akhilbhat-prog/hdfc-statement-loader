@@ -102,21 +102,17 @@ class TestTriggerEndpoint:
 
 
 class TestBlueprintWiring:
-    def test_review_page_served(self, client):
-        resp = client.get("/review")
-        assert resp.status_code == 200
-
     def test_api_categories_accessible(self, client):
         resp = client.get("/api/categories")
         assert resp.status_code == 200
 
-    def test_token_auth_enforced_on_review(self, monkeypatch):
+    def test_token_auth_enforced_on_categories(self, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
         import app as flask_app
         flask_app.app.config["TESTING"] = True
         c = flask_app.app.test_client()
-        assert c.get("/review").status_code == 401
-        assert c.get("/review?token=secret").status_code == 200
+        assert c.get("/api/categories").status_code == 401
+        assert c.get("/api/categories?token=secret").status_code == 200
 
     def test_trigger_blocked_without_token(self, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")

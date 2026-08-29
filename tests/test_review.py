@@ -52,32 +52,32 @@ def _make_mock_conn(fetchone=None, fetchall=None, rowcount=1):
 class TestRequireToken:
     def test_no_token_env_allows_access(self, client, monkeypatch):
         monkeypatch.delenv("ADMIN_TOKEN", raising=False)
-        resp = client.get("/review")
+        resp = client.get("/api/categories")
         assert resp.status_code == 200
 
     def test_token_env_set_blocks_without_token(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/review")
+        resp = client.get("/api/categories")
         assert resp.status_code == 401
 
     def test_token_env_set_blocks_wrong_token(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/review?token=wrong")
+        resp = client.get("/api/categories?token=wrong")
         assert resp.status_code == 401
 
     def test_correct_query_param_grants_access(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/review?token=secret")
+        resp = client.get("/api/categories?token=secret")
         assert resp.status_code == 200
 
     def test_correct_bearer_header_grants_access(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/review", headers={"Authorization": "Bearer secret"})
+        resp = client.get("/api/categories", headers={"Authorization": "Bearer secret"})
         assert resp.status_code == 200
 
     def test_raw_token_in_auth_header_also_grants_access(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/review", headers={"Authorization": "secret"})
+        resp = client.get("/api/categories", headers={"Authorization": "secret"})
         assert resp.status_code == 200
 
 

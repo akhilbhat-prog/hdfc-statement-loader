@@ -51,22 +51,28 @@ def _make_mock_conn(fetchone=None, fetchall=None, rowcount=1):
 class TestRequireToken:
     def test_no_token_env_allows_page(self, client, monkeypatch):
         monkeypatch.delenv("ADMIN_TOKEN", raising=False)
-        resp = client.get("/recurring")
+        mock_conn, _ = _make_mock_conn(fetchall=[])
+        with patch("db.get_connection", return_value=mock_conn):
+            resp = client.get("/api/recurring")
         assert resp.status_code == 200
 
     def test_token_env_blocks_page_without_token(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/recurring")
+        resp = client.get("/api/recurring")
         assert resp.status_code == 401
 
     def test_correct_query_param_grants_page(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/recurring?token=secret")
+        mock_conn, _ = _make_mock_conn(fetchall=[])
+        with patch("db.get_connection", return_value=mock_conn):
+            resp = client.get("/api/recurring?token=secret")
         assert resp.status_code == 200
 
     def test_correct_bearer_header_grants_page(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/recurring", headers={"Authorization": "Bearer secret"})
+        mock_conn, _ = _make_mock_conn(fetchall=[])
+        with patch("db.get_connection", return_value=mock_conn):
+            resp = client.get("/api/recurring", headers={"Authorization": "Bearer secret"})
         assert resp.status_code == 200
 
     def test_api_list_requires_token(self, client, monkeypatch):

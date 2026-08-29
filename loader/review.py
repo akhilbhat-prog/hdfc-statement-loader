@@ -2,7 +2,6 @@
 Flask Blueprint for the batch review UI.
 
 Routes:
-  GET    /review                              — review HTML page
   GET    /api/batches                         — list pending/reviewed batches
   GET    /api/batches/<id>                    — batch details + items
   PATCH  /api/batches/<id>/items/<txn_id>     — save edits (category/subcategory/type)
@@ -23,7 +22,7 @@ import subprocess
 import sys
 from datetime import date as _date
 
-from flask import Blueprint, abort, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, request
 
 import db
 from token_auth import require_admin as _require_token
@@ -35,17 +34,6 @@ review_bp = Blueprint("review", __name__)
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RULES_PATH = os.path.join(_project_root, "categorizer", "config", "rules.json")
 _SHARED_SCOPE_START = db._SHARED_SCOPE_START
-
-
-# ---------------------------------------------------------------------------
-# HTML page
-# ---------------------------------------------------------------------------
-
-@review_bp.route("/review")
-@_require_token
-def review_page():
-    token = os.environ.get("ADMIN_TOKEN", "")
-    return render_template("review.html", review_token=token)
 
 
 # ---------------------------------------------------------------------------

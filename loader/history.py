@@ -15,10 +15,9 @@ Auth: if ADMIN_TOKEN env var is set, all routes require a matching
       ?token= query param or Authorization: Bearer <token> header.
 """
 
-import os
 from datetime import date as _date
 
-from flask import Blueprint, abort, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, request
 
 import db
 from token_auth import require_admin as _require_token
@@ -28,13 +27,6 @@ history_bp = Blueprint("history", __name__)
 _SHARED_SCOPE_START = db._SHARED_SCOPE_START
 
 
-
-
-@history_bp.route("/view")
-@_require_token
-def view_page():
-    token = os.environ.get("ADMIN_TOKEN", "")
-    return render_template("view.html", review_token=token)
 
 
 @history_bp.route("/api/history/periods")

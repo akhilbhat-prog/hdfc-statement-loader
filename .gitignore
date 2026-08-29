@@ -35,5 +35,9 @@ _scratch/
 loader/reset_db.py
 loader/restore_feed.py
 
+# Frontend build artifacts
+frontend/node_modules/
+static/dist/
+
 # Claude Code
 .claude/

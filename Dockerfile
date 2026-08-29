@@ -1,3 +1,12 @@
+# Stage 1: Build the React frontend
+FROM node:20-slim AS frontend
+WORKDIR /frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Python app
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -14,6 +23,9 @@ COPY categorizer/requirements.txt categorizer/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt -r categorizer/requirements.txt
 
 COPY . .
+
+# Copy the React build output (Vite outDir is ../static/dist relative to /frontend)
+COPY --from=frontend /static/dist ./static/dist
 
 EXPOSE 8080
 

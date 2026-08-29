@@ -12,13 +12,12 @@ Routes:
 Auth: ADMIN_TOKEN grants full access. Valid user session (role='user') also grants access.
 """
 
-import os
 from datetime import date as _date
 
-from flask import Blueprint, abort, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, request
 
 import db
-from token_auth import require_any_auth as _require_token, require_user_page as _require_page
+from token_auth import require_any_auth as _require_token
 
 shared_bp = Blueprint("shared", __name__)
 
@@ -28,13 +27,6 @@ _DEFAULT_FY_YEAR = 2026
 def _current_fy_year() -> int:
     today = _date.today()
     return today.year if today.month >= 4 else today.year - 1
-
-
-@shared_bp.route("/shared")
-@_require_page
-def shared_page():
-    token = os.environ.get("ADMIN_TOKEN", "")
-    return render_template("shared.html", review_token=token)
 
 
 @shared_bp.route("/api/shared/fy-list")

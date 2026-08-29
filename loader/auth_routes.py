@@ -13,6 +13,7 @@ import os
 
 from flask import (
     Blueprint,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -22,8 +23,18 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
+from token_auth import _auth_disabled, _is_valid_admin_token
 
 auth_bp = Blueprint("auth", __name__)
+
+
+@auth_bp.route("/api/me")
+def me():
+    if session.get("role") in ("user", "admin"):
+        return jsonify({"username": session["username"], "role": session["role"]})
+    if _auth_disabled() or _is_valid_admin_token():
+        return jsonify({"username": "Admin", "role": "admin"})
+    return jsonify({"error": "Unauthenticated"}), 401
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -51,8 +62,8 @@ def login_page():
     session["role"] = user["role"]
     session["username"] = user["username"]
     if user["role"] == "admin":
-        return redirect(url_for("history.view_page"))
-    return redirect(url_for("shared.shared_page"))
+        return redirect("/view")
+    return redirect("/shared")
 
 
 @auth_bp.route("/logout")

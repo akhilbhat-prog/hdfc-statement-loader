@@ -13,22 +13,14 @@ Auth: if ADMIN_TOKEN env var is set, all routes require a matching
       ?token= query param or Authorization: Bearer <token> header.
 """
 
-import os
 from datetime import date as _date
 
-from flask import Blueprint, abort, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, request
 
 import db
 from token_auth import require_admin as _require_token
 
 recurring_bp = Blueprint("recurring", __name__)
-
-
-@recurring_bp.route("/recurring")
-@_require_token
-def recurring_page():
-    token = os.environ.get("ADMIN_TOKEN", "")
-    return render_template("recurring.html", review_token=token)
 
 
 @recurring_bp.route("/api/recurring")

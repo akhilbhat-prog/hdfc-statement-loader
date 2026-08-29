@@ -150,6 +150,57 @@ Migrated from `hdfc-statement-loader` to `exptrack-privet-drive` (ID `exptrack` 
 
 ---
 
+## BL-21 — Fix GCS_MODEL_BUCKET not surviving Cloud Run deployments
+
+**Status:** Complete (2026-06-27)
+
+Added a dedicated `gcloud run services update` shell step after the `deploy-cloudrun@v2` action. All attempts to set it via the action itself (flags, env_vars param, --set-env-vars, --update-env-vars) silently dropped the variable. The explicit gcloud step mirrors the manual command that was confirmed to work. Verified via `gcloud run services describe` after deploy.
+
+---
+
+## BL-22 — Add "Run Pipeline" trigger button to `/review`
+
+**Status:** Complete (2026-06-27)
+
+Added "Run Pipeline" button to the `/review` sidebar footer. Calls `POST /trigger`, shows a loading state, then displays processed/skipped/failed counts inline. Reloads the batch list on completion so new batches appear immediately.
+
+---
+
+## BL-23 — Rename "History" label to "View" across the UI
+
+**Status:** Complete (2026-06-27)
+
+Updated all four templates: nav link label "History" → "View", `view.html` page title and logo subtitle updated to match.
+
+---
+
+## BL-26 — Include merchant details for skipped messages in summary email
+
+**Status:** Complete (2026-06-27)
+
+Added `get_transaction_by_message_id` to `db.py`. For "already processed" skips, the poller now looks up the transaction and attaches merchant/amount/type to the skipped entry. Email shows e.g. `id=19f0695d3f45c9c4  already processed  (Swiggy  Rs. 350.00  debit)`.
+
+---
+
+## BL-24 — Migrate frontend to React
+
+**Status:** Open
+
+Replace the four vanilla HTML/CSS/JS templates (`review.html`, `view.html`, `shared.html`, `recurring.html`) with a Vite/React app that calls the existing Flask `/api/*` routes. Flask backend stays unchanged — Python ML/Gmail/parsing code is unaffected. React build either served from Flask (static files) or deployed separately. Auth flow (session cookie + admin token) must be preserved.
+
+---
+
+## BL-25 — Decommission old GCP project and remove all HDFC references
+
+**Status:** Complete (2026-06-27)
+
+- GCS bucket `hdfc-statement-loader-mlruns` deleted (confirmed 404)
+- GCP project `hdfc-statement-loader` marked `DELETE_REQUESTED` (permanent deletion after 30-day hold)
+- Code: docstrings updated, email subjects renamed to "ExpTrack Pipeline Run", README rewritten, stale Artifact Registry path in CLAUDE.md fixed
+- Functional HDFC references (HDFC_SENDERS, parser regex, merchant stopword, rules.json) kept — they refer to the bank, not the old project
+
+---
+
 ## BL-15 — Context management strategy
 
 **Status:** Complete (2026-06-20)

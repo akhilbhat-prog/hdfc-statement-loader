@@ -49,22 +49,28 @@ def _make_mock_conn(fetchone=None, fetchall=None, rowcount=1):
 class TestRequireToken:
     def test_no_token_env_allows_access(self, client, monkeypatch):
         monkeypatch.delenv("ADMIN_TOKEN", raising=False)
-        resp = client.get("/view")
+        mock_conn, _ = _make_mock_conn(fetchall=[])
+        with patch("db.get_connection", return_value=mock_conn):
+            resp = client.get("/api/history/periods")
         assert resp.status_code == 200
 
     def test_token_env_set_blocks_without_token(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/view")
+        resp = client.get("/api/history/periods")
         assert resp.status_code == 401
 
     def test_correct_query_param_grants_access(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/view?token=secret")
+        mock_conn, _ = _make_mock_conn(fetchall=[])
+        with patch("db.get_connection", return_value=mock_conn):
+            resp = client.get("/api/history/periods?token=secret")
         assert resp.status_code == 200
 
     def test_correct_bearer_header_grants_access(self, client, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "secret")
-        resp = client.get("/view", headers={"Authorization": "Bearer secret"})
+        mock_conn, _ = _make_mock_conn(fetchall=[])
+        with patch("db.get_connection", return_value=mock_conn):
+            resp = client.get("/api/history/periods", headers={"Authorization": "Bearer secret"})
         assert resp.status_code == 200
 
     def test_api_periods_requires_token(self, client, monkeypatch):

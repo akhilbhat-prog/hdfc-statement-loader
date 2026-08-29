@@ -6,7 +6,7 @@ Onboarding guide for AI assistants. Read this at the start of every session.
 
 ## Project Overview
 
-A production financial pipeline that polls HDFC Bank transaction alert emails daily via the Gmail API, parses 4 email formats (UPI debit old/new, UPI credit, netbanking, debit card), stores parsed transactions in a Neon PostgreSQL database, classifies them into spend categories using a rules → memory → hierarchical LightGBM fallback pipeline, and sends a nightly summary email. Four web UIs are served from the same Cloud Run service: `/review` (batch review of ML predictions), `/view` (full CRUD history editor), `/shared` (shared expense ledger with balance tracking), and `/recurring` (auto-generated monthly expense definitions). The system runs on Google Cloud Run, is triggered daily at 9 PM IST by Cloud Scheduler, and deploys automatically via GitHub Actions on every push to `main`.
+A production financial pipeline that polls HDFC Bank transaction alert emails daily via the Gmail API, parses 4 email formats (UPI debit old/new, UPI credit, netbanking, debit card), stores parsed transactions in a Neon PostgreSQL database, classifies them into spend categories using a rules → memory → hierarchical LightGBM fallback pipeline, and sends a nightly summary email. Four web UIs are served from the same Cloud Run service: `/review` (batch review of ML predictions), `/view` (full CRUD history editor), `/shared` (shared expense ledger with balance tracking), and `/recurring` (auto-generated monthly expense definitions). These four UIs are a single React SPA (`frontend/`, built into `static/dist`) served by Flask's `spa_catch_all` route in `loader/app.py`; all data access goes through the Flask `/api/*` JSON endpoints. The system runs on Google Cloud Run, is triggered daily at 9 PM IST by Cloud Scheduler, and deploys automatically via GitHub Actions on every push to `main`.
 
 ---
 
@@ -15,14 +15,14 @@ A production financial pipeline that polls HDFC Bank transaction alert emails da
 ```
 exptrack/
 ├── loader/                         # Gmail polling + email parsing pipeline + web UIs
-│   ├── app.py                      # ENTRY POINT: Flask app, Cloud Run trigger, blueprint registration
+│   ├── app.py                      # ENTRY POINT: Flask app, Cloud Run trigger, blueprint registration, spa_catch_all
 │   ├── gmail_poller.py             # Gmail polling logic + email parsing (CLI runner)
-│   ├── review.py                   # Flask Blueprint: batch review API (9 routes)
-│   ├── history.py                  # Flask Blueprint: history viewer/editor API (9 routes)
-│   ├── shared.py                   # Flask Blueprint: shared expense ledger API (8 routes)
-│   ├── recurring.py                # Flask Blueprint: recurring transactions API (6 routes)
-│   ├── token_auth.py               # Auth decorators: require_admin, require_any_auth, require_user_page
-│   ├── auth_routes.py              # Flask Blueprint: /login, /logout, /register (session-based user auth)
+│   ├── review.py                   # Flask Blueprint: batch review API
+│   ├── history.py                  # Flask Blueprint: history viewer/editor API
+│   ├── shared.py                   # Flask Blueprint: shared expense ledger API
+│   ├── recurring.py                # Flask Blueprint: recurring transactions API
+│   ├── token_auth.py               # Auth decorators: require_admin, require_any_auth
+│   ├── auth_routes.py              # Flask Blueprint: /login, /logout, /register, /api/me
 │   ├── parser.py                   # Email format detection & field extraction
 │   ├── db.py                       # PostgreSQL schema creation & queries (9 tables)
 │   ├── auth.py                     # One-time OAuth2 setup (run manually once)
@@ -31,11 +31,15 @@ exptrack/
 │   ├── backfill_time_period.py     # One-shot: backfill time_period from entry_date for NULL rows
 │   └── seed_test_batch.py          # One-shot: inserts a test pending batch for UI testing
 │
+├── frontend/                       # React + Vite + TypeScript SPA for /review, /view, /shared, /recurring
+│   ├── src/pages/                  # Review.tsx, View.tsx, Shared.tsx, Recurring.tsx
+│   ├── src/api/                    # Typed fetch wrappers per blueprint (batches, history, shared, recurring)
+│   ├── src/hooks/                  # useAuth, useTheme, useToast
+│   └── vite.config.ts              # build.outDir → ../static/dist; dev proxy → localhost:8080
+│
 ├── templates/
-│   ├── review.html                 # Batch review UI (vanilla HTML/CSS/JS)
-│   ├── view.html                   # History browser/editor UI (vanilla HTML/CSS/JS)
-│   ├── shared.html                 # Shared expenses ledger UI (vanilla HTML/CSS/JS)
-│   └── recurring.html              # Recurring transactions manager UI (vanilla HTML/CSS/JS)
+│   ├── login.html                  # Login form (Jinja, session-based auth)
+│   └── register.html               # Registration form (Jinja, requires INVITE_CODE)
 │
 ├── categorizer/                    # Transaction classification pipeline
 │   ├── main.py                     # Full training pipeline (run to retrain model)
@@ -180,7 +184,7 @@ exptrack/
 | `AFTER_DATE` | No | Gmail `after:` date filter in `YYYY/MM/DD` format; overrides `POLL_DAYS` for backfill runs |
 | `MAX_MESSAGES` | No | Cap on messages processed (useful for testing) |
 | `PORT` | No | Flask server port (default: `8080`) |
-| `ADMIN_TOKEN` | No | If set, admin-only routes (`/review`, `/view`, `/recurring`, `/api/*` except `/api/shared/*`) require this token via `?token=` or `Authorization: Bearer` |
+| `ADMIN_TOKEN` | No | If set, admin-only `/api/*` routes (all except `/api/shared/*` and `/api/me`) require this token via `?token=` or `Authorization: Bearer`. The SPA shell itself (`/review`, `/view`, `/recurring`) is always served by `spa_catch_all`; auth is enforced when the page calls the underlying `/api/*` routes. |
 | `INVITE_CODE` | No | Required to register a new user at `/register`; must be set to enable user registration |
 | `SECRET_KEY` | Prod | Flask session signing key; must be set in production (stored in GCP Secret Manager as `flask-secret-key`). Falls back to `"dev-secret-change-me"` locally with a warning. |
 | `GCS_MODEL_BUCKET` | Prod | GCS bucket for ML model artifacts (set to `exptrack-mlruns` in Cloud Run via `deploy.yml`). Required for model retraining triggered by Complete Batch. |
@@ -360,7 +364,7 @@ pytest tests/ -v
 
 `tests/conftest.py` adds both `loader/` and `categorizer/` to `sys.path`.
 
-**Current test files (446 tests across 18 files, no DB or network required):**
+**Current test files (451 tests across 18 files, no DB or network required):**
 
 | File | Covers |
 |---|---|
@@ -452,13 +456,12 @@ The old manual SQL approach has been replaced by a web UI. Current workflow:
 
 **Review UI implementation files:**
 - `loader/review.py` — Flask Blueprint registered on the main app; all API logic is here
-- `templates/review.html` — Single-page UI served at `GET /review`
+- `frontend/src/pages/Review.tsx` — React page served at `/review` via `loader/app.py`'s `spa_catch_all`
 - Blueprint is registered in `loader/app.py` with `app.register_blueprint(review_bp)`
 
 **Review API routes** (all in `loader/review.py`):
 | Route | Description |
 |---|---|
-| `GET /review` | Serves the HTML page |
 | `GET /api/batches` | Lists batches; append `?include_complete=1` to include completed ones |
 | `GET /api/batches/<id>` | Batch info + all items joined with transactions |
 | `PATCH /api/batches/<id>/items/<txn_id>` | Save category/subcategory/type/cadence/divide_by/shared_expense/share_ratio/amount for one item |
@@ -489,13 +492,12 @@ The old manual SQL approach has been replaced by a web UI. Current workflow:
 
 **Implementation files:**
 - `loader/history.py` — Flask Blueprint registered on the main app; all API logic is here
-- `templates/view.html` — Single-page UI served at `GET /view`
+- `frontend/src/pages/View.tsx` — React page served at `/view` via `loader/app.py`'s `spa_catch_all`
 - Blueprint is registered in `loader/app.py` with `app.register_blueprint(history_bp)`
 
 **History API routes** (all in `loader/history.py`):
 | Route | Description |
 |---|---|
-| `GET /view` | Serves the HTML page |
 | `GET /api/history/periods` | Distinct time_period values with row counts, newest first |
 | `GET /api/history` | Paginated rows for one period (`?period=<p>&page=<n>`), 25 per page |
 | `GET /api/history/summary` | Top-5 categories + period total (`?period=<p>&prev_period=<p>` optional) |
@@ -532,7 +534,7 @@ The old manual SQL approach has been replaced by a web UI. Current workflow:
 
 **Implementation files:**
 - `loader/shared.py` — Flask Blueprint; all API logic is here
-- `templates/shared.html` — Single-page UI served at `GET /shared`
+- `frontend/src/pages/Shared.tsx` — React page served at `/shared` via `loader/app.py`'s `spa_catch_all`
 
 **Mirroring:** Rows are synced automatically in three events:
 1. **Complete Batch** (`review.py`) — mirrors qualifying items from batch to `shared_transactions`
@@ -543,7 +545,6 @@ The old manual SQL approach has been replaced by a web UI. Current workflow:
 **Shared API routes** (all in `loader/shared.py`):
 | Route | Description |
 |---|---|
-| `GET /shared` | Serves the HTML page |
 | `GET /api/shared/fy-list` | FY start years present in `shared_transactions` |
 | `GET /api/shared` | All rows for FY (`?fy=2026`), ordered newest first |
 | `GET /api/shared/summary` | `{net_balance, total_akhil_paid, total_aditi_paid}` for FY |
@@ -563,12 +564,11 @@ The old manual SQL approach has been replaced by a web UI. Current workflow:
 
 **Implementation files:**
 - `loader/recurring.py` — Flask Blueprint; all API logic is here
-- `templates/recurring.html` — Single-page UI served at `GET /recurring`
+- `frontend/src/pages/Recurring.tsx` — React page served at `/recurring` via `loader/app.py`'s `spa_catch_all`
 
 **Recurring API routes** (all in `loader/recurring.py`):
 | Route | Description |
 |---|---|
-| `GET /recurring` | Serves the HTML page |
 | `GET /api/recurring` | List all definitions (active first) |
 | `POST /api/recurring` | Create new definition (`entry_text` and `amount` required) |
 | `PUT /api/recurring/<id>` | Full update of a definition |
@@ -577,16 +577,21 @@ The old manual SQL approach has been replaced by a web UI. Current workflow:
 
 **Generation idempotency:** `last_generated` is stamped after each run. The SELECT query uses `DATE_TRUNC('month', last_generated) < DATE_TRUNC('month', today)` so re-triggering on the same day is safe.
 
-### Auth System
-`loader/token_auth.py` provides three decorators used by blueprints:
-- `require_admin` — used by `/review`, `/view`, `/recurring` and their APIs. Requires `ADMIN_TOKEN` via `?token=` or `Authorization: Bearer`. Dev mode (neither `ADMIN_TOKEN` nor `INVITE_CODE` set): allows all.
-- `require_any_auth` — used by `/api/shared/*` routes. Allows either a valid `ADMIN_TOKEN` or a valid user session cookie (role `user` or `admin`).
-- `require_user_page` — used by the `/shared` HTML page. Same logic as `require_any_auth` but redirects to `/login` instead of returning 401.
+### SPA Serving
+`loader/app.py`'s `spa_catch_all` route (`/<path:path>`, registered last) serves the React SPA for everything not explicitly excluded (`api/`, `login`, `logout`, `register`, `trigger`): it serves the matching file from `static/dist` if one exists (built JS/CSS assets), otherwise falls back to `static/dist/index.html` so React Router can handle client-side routing — this covers direct/hard-refresh navigation to `/review`, `/view`, `/shared`, `/recurring`. `static/dist` is produced by `frontend`'s `npm run build` (`vite.config.ts`'s `build.outDir`); the `Dockerfile` runs this in a `node:20-slim` build stage and copies the output into the final image. The Flask app's own `static_folder`/`static_url_path` are left at their defaults (not pointed at `static/dist`) to avoid Werkzeug rule-matching ambiguity between Flask's built-in static route and the catch-all.
 
-`loader/auth_routes.py` — `auth_bp` Blueprint with three routes:
-- `GET/POST /login` — login form; sets signed session cookie (30-day expiry) on success
+The SPA has no client-side route guard — it calls `GET /api/me` on load for display purposes only. Actual authorization is enforced entirely server-side on each `/api/*` call; an unauthenticated user hitting a page sees the shell until the first API call 401s and `frontend/src/api/client.ts` redirects to `/login`.
+
+### Auth System
+`loader/token_auth.py` provides two decorators used by blueprints:
+- `require_admin` — used by admin `/api/*` routes (batches, history, recurring). Requires `ADMIN_TOKEN` via `?token=` or `Authorization: Bearer`. Dev mode (neither `ADMIN_TOKEN` nor `INVITE_CODE` set): allows all.
+- `require_any_auth` — used by `/api/shared/*` routes. Allows either a valid `ADMIN_TOKEN` or a valid user session cookie (role `user` or `admin`).
+
+`loader/auth_routes.py` — `auth_bp` Blueprint:
+- `GET/POST /login` — login form (Jinja); sets signed session cookie (30-day expiry) on success, redirects to `/view` (admin) or `/shared` (user)
 - `GET /logout` — clears session, redirects to `/login`
-- `GET/POST /register` — registration form; requires `INVITE_CODE` env var to match
+- `GET/POST /register` — registration form (Jinja); requires `INVITE_CODE` env var to match
+- `GET /api/me` — returns `{username, role}` for the current session/token, or 401; used by the SPA on load
 
 Sessions use Flask's signed cookies with `SECRET_KEY`. No server-side session storage — all Cloud Run instances validate the same cookie using the shared `SECRET_KEY` from GCP Secret Manager.
 
