@@ -1,6 +1,6 @@
 # ExpTrack
 
-A personal financial pipeline that polls HDFC Bank transaction alert emails via Gmail, parses and stores them in a PostgreSQL database, categorises them with a rules → memory → ML pipeline, and surfaces them through four web UIs for review, editing, shared expense tracking, and recurring transaction management. Runs on Google Cloud Run, triggered daily by Cloud Scheduler.
+A personal financial pipeline that polls HDFC Bank transaction alert emails via Gmail, parses and stores them in a PostgreSQL database, categorises them with a rules → memory → ML pipeline, and surfaces them through four web UIs for review, editing, shared expense tracking, and recurring transaction management. The four UIs are a React SPA (`frontend/`) served by Flask. Runs on Google Cloud Run, triggered daily by Cloud Scheduler.
 
 ---
 
@@ -32,7 +32,6 @@ A personal financial pipeline that polls HDFC Bank transaction alert emails via 
 ### Review (`loader/review.py`)
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/review` | Serve review HTML page |
 | GET | `/api/batches` | List batches (`?include_complete=1` for all) |
 | GET | `/api/batches/<id>` | Batch detail + items |
 | PATCH | `/api/batches/<id>/items/<txn_id>` | Edit category/subcategory/type/cadence/divide_by/shared_expense/share_ratio/amount |
@@ -45,7 +44,6 @@ A personal financial pipeline that polls HDFC Bank transaction alert emails via 
 ### History (`loader/history.py`)
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/view` | Serve history HTML page |
 | GET | `/api/history/periods` | Distinct `time_period` values with row counts, newest first |
 | GET | `/api/history` | Paginated rows (`?period=May-2026&page=1`) |
 | GET | `/api/history/summary` | Top-5 categories + period total (`?period=&prev_period=` optional) |
@@ -58,7 +56,6 @@ A personal financial pipeline that polls HDFC Bank transaction alert emails via 
 ### Shared (`loader/shared.py`)
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/shared` | Serve shared HTML page |
 | GET | `/api/shared/fy-list` | FY start years present in `shared_transactions` |
 | GET | `/api/shared` | All rows for FY (`?fy=2026`) |
 | GET | `/api/shared/summary` | `{net_balance, total_akhil_paid, total_aditi_paid}` for FY |
@@ -70,12 +67,21 @@ A personal financial pipeline that polls HDFC Bank transaction alert emails via 
 ### Recurring (`loader/recurring.py`)
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/recurring` | Serve recurring HTML page |
 | GET | `/api/recurring` | List all recurring definitions |
 | POST | `/api/recurring` | Create new definition |
 | PUT | `/api/recurring/<id>` | Update definition |
 | DELETE | `/api/recurring/<id>` | Delete definition |
 | POST | `/api/recurring/generate` | Manually trigger generation (`?date=YYYY-MM-DD` optional) |
+
+### Auth (`loader/auth_routes.py`)
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET/POST | `/login` | Login form; sets session cookie |
+| GET | `/logout` | Clear session |
+| GET/POST | `/register` | Registration form (requires `INVITE_CODE`) |
+| GET | `/api/me` | Current user `{username, role}` for the SPA, or 401 |
+
+Page routes (`/review`, `/view`, `/shared`, `/recurring`) are all served by the React SPA via `loader/app.py`'s `spa_catch_all` — see [Project structure](#project-structure).
 
 ---
 
@@ -109,7 +115,7 @@ A personal financial pipeline that polls HDFC Bank transaction alert emails via 
 | `POLL_DAYS` | No | Days back to search (default: `1`) |
 | `AFTER_DATE` | No | Override `POLL_DAYS` with a `YYYY/MM/DD` date |
 | `MAX_MESSAGES` | No | Cap on messages processed (default: no limit) |
-| `ADMIN_TOKEN` | No | If set, admin routes require `?token=` or `Authorization: Bearer` |
+| `ADMIN_TOKEN` | No | If set, admin `/api/*` routes require `?token=` or `Authorization: Bearer`. The SPA page shell is always served; auth is enforced on the underlying API calls. |
 | `PORT` | No | Flask server port (default: `8080`) |
 
 ### Categoriser
@@ -137,6 +143,8 @@ python loader/gmail_poller.py
 cd loader && PORT=5000 python app.py
 # then open http://localhost:5000/view
 ```
+
+For frontend development with hot reload, see [`frontend/README.md`](frontend/README.md) — `npm run dev` proxies API calls to the Flask server above.
 
 ---
 
@@ -203,29 +211,33 @@ Response:
 ```
 exptrack/
 ├── loader/
-│   ├── app.py                # Flask entry point; registers all blueprints
+│   ├── app.py                # Flask entry point; registers blueprints, spa_catch_all
 │   ├── gmail_poller.py       # Gmail polling, email parsing, summary email
 │   ├── parser.py             # 4-format email parser + inline test suite
 │   ├── db.py                 # All DB helpers (9 tables)
-│   ├── review.py             # /review blueprint (batch review)
-│   ├── history.py            # /view blueprint (history editor)
-│   ├── shared.py             # /shared blueprint (shared expenses)
-│   ├── recurring.py          # /recurring blueprint (recurring transactions)
-│   ├── token_auth.py         # Shared _require_token decorator
+│   ├── review.py             # /api/batches, /api/categories (batch review)
+│   ├── history.py            # /api/history/* (history editor)
+│   ├── shared.py             # /api/shared/* (shared expenses)
+│   ├── recurring.py          # /api/recurring/* (recurring transactions)
+│   ├── token_auth.py         # require_admin, require_any_auth decorators
+│   ├── auth_routes.py        # /login, /logout, /register, /api/me
 │   └── auth.py               # One-time OAuth2 setup
+├── frontend/                 # React + Vite + TS SPA for /review, /view, /shared, /recurring
+│   ├── src/pages/             # Review.tsx, View.tsx, Shared.tsx, Recurring.tsx
+│   ├── src/api/               # Fetch wrappers per blueprint
+│   └── vite.config.ts         # build.outDir → ../static/dist
 ├── categorizer/
 │   ├── batch_process.py      # Batch classification entry point
-│   ├── main.py               # Model retraining pipeline
-│   ├── config/rules.json     # Keyword → category rules
-│   ├── processing/           # cleaner, merchant, rules, memory, pipeline
-│   └── models/               # LightGBM train/predict/registry
+│   ├── main.py                # Model retraining pipeline
+│   ├── config/rules.json      # Keyword → category rules
+│   ├── processing/            # cleaner, merchant, rules, memory, pipeline
+│   └── models/                # LightGBM train/predict/registry
 ├── templates/
-│   ├── review.html           # Batch review UI
-│   ├── view.html             # History editor UI
-│   ├── shared.html           # Shared expenses UI
-│   └── recurring.html        # Recurring transactions UI
-├── tests/                    # 399+ tests across 17 files (no DB required)
-├── Dockerfile
+│   ├── login.html            # Login form (Jinja)
+│   └── register.html         # Registration form (Jinja)
+├── static/dist/               # Built React SPA (generated by `npm run build`; gitignored)
+├── tests/                    # 451 tests across 18 files (no DB required)
+├── Dockerfile                 # Multi-stage: node build → python runtime
 ├── requirements.txt
 └── README.md
 ```

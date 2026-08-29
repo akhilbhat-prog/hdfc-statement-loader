@@ -184,9 +184,9 @@ Added `get_transaction_by_message_id` to `db.py`. For "already processed" skips,
 
 ## BL-24 — Migrate frontend to React
 
-**Status:** Open
+**Status:** Complete (2026-08-29)
 
-Replace the four vanilla HTML/CSS/JS templates (`review.html`, `view.html`, `shared.html`, `recurring.html`) with a Vite/React app that calls the existing Flask `/api/*` routes. Flask backend stays unchanged — Python ML/Gmail/parsing code is unaffected. React build either served from Flask (static files) or deployed separately. Auth flow (session cookie + admin token) must be preserved.
+Replaced the four vanilla HTML/CSS/JS templates (`review.html`, `view.html`, `shared.html`, `recurring.html`) with a Vite/React/TypeScript SPA (`frontend/`) calling the existing Flask `/api/*` routes unchanged. A prior attempt at this had been partially reverted after breaking tests; this pass finished it cleanly: added a `spa_catch_all` route in `loader/app.py` that serves built assets from `static/dist` and falls back to `index.html` for client-side routing, removed the last Jinja page route (`GET /review`), deleted the orphaned templates, and fixed the two tests that broke from the earlier incomplete migration. Also fixed a dead React Query `onSuccess` bug that silently broke the `/view` settings panel, tightened bulk-edit gating to require category+subcategory+type, persisted admin-token auth to `sessionStorage`, removed unused Radix UI/sonner dependencies, and added a `frontend-build` CI job. Auth flow (session cookie + admin token) preserved — enforcement is entirely server-side on `/api/*` calls. 451/451 tests passing; deployed and verified live. Follow-up: `npm audit` fix applied same day for 4 high-severity transitive dep vulnerabilities (nanoid, postcss, react-router) — 0 vulnerabilities remaining.
 
 ---
 
