@@ -190,7 +190,7 @@ export function ReviewPage() {
     setSortCol(col)
     setPage(1)
   }
-  function arr(col: SortKey) { return sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '' }
+  function arr(col: SortKey) { return sortCol === col && sortDir === 'desc' ? ' ▼' : ' ▲' }
 
   const filtered = useMemo(() => {
     let r = [...items]

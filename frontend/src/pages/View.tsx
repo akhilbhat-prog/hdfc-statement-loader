@@ -10,6 +10,7 @@ import type { HistoryRow, AppSettings, Cadence, SpendType } from '../types'
 
 const PAGE_SIZE = 25
 type SortKey = 'entry_date' | 'merchant' | 'category' | 'sub_category' | 'spend_type' | 'amount' | 'time_period'
+  | 'monthly_amount' | 'final_amount' | 'shared_expense'
 
 function fmtAmt(n: number | null | undefined) {
   if (n == null) return '—'
@@ -21,7 +22,8 @@ function fmtDateShort(s: string) {
 }
 
 const COL_WIDTH: Partial<Record<SortKey, number>> = {
-  entry_date: 76, amount: 90, category: 128, sub_category: 148, spend_type: 106,
+  entry_date: 76, merchant: 200, amount: 90, category: 128, sub_category: 148, spend_type: 106,
+  monthly_amount: 100, final_amount: 100,
 }
 
 function prevPeriod(period: string): string | undefined {
@@ -150,7 +152,7 @@ export function ViewPage() {
   }
 
   function arr(col: SortKey) {
-    return sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+    return sortCol === col && sortDir === 'desc' ? ' ▼' : ' ▲'
   }
 
   // Dirty row editing
@@ -327,7 +329,7 @@ export function ViewPage() {
           <div className="empty-state">Select a period from the sidebar</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
+            <table className="data-table view-table">
               <thead>
                 <tr>
                   <th style={{ width: 32, textAlign: 'center' }}>
@@ -350,9 +352,19 @@ export function ViewPage() {
                       {label}<span className="sort-icon">{arr(k)}</span>
                     </th>
                   ))}
-                  <th style={{ textAlign: 'right' }}>Monthly</th>
-                  <th style={{ textAlign: 'right' }}>Final</th>
-                  <th style={{ textAlign: 'center' }}>Shared</th>
+                  {([
+                    ['monthly_amount', 'Monthly'],
+                    ['final_amount',   'Final'],
+                  ] as [SortKey, string][]).map(([k, label]) => (
+                    <th key={k} className={`sortable${sortCol === k ? ' sort-active' : ''}`} onClick={() => sort(k)}
+                      style={{ textAlign: 'right' as const, width: COL_WIDTH[k] }}>
+                      {label}<span className="sort-icon">{arr(k)}</span>
+                    </th>
+                  ))}
+                  <th className={`sortable${sortCol === 'shared_expense' ? ' sort-active' : ''}`}
+                    onClick={() => sort('shared_expense')} style={{ textAlign: 'center', width: 72 }}>
+                    Shared<span className="sort-icon">{arr('shared_expense')}</span>
+                  </th>
                   <th style={{ width: 64 }}></th>
                 </tr>
                 {/* Filter row */}

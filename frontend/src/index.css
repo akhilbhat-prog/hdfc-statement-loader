@@ -290,6 +290,7 @@ body.light .toggle-thumb { transform: translateX(20px); background: #ffffff; }
 
 /* ── Table ─────────────────────────────────────────────────────── */
 .data-table { width: 100%; border-collapse: collapse; }
+.view-table { table-layout: fixed; }
 .data-table th {
   padding: 8px 10px; text-align: left; font-size: 11px;
   font-weight: 700; color: var(--muted); text-transform: uppercase;
@@ -299,8 +300,8 @@ body.light .toggle-thumb { transform: translateX(20px); background: #ffffff; }
 }
 .data-table th.sortable { cursor: pointer; user-select: none; }
 .data-table th.sortable:hover { color: var(--text); }
-.sort-icon { color: var(--muted); margin-left: 2px; }
-.data-table th.sort-active .sort-icon { color: var(--teal); }
+.sort-icon { color: var(--muted); margin-left: 2px; visibility: hidden; }
+.data-table th.sort-active .sort-icon { color: var(--teal); visibility: visible; }
 
 .data-table td {
   padding: 8px 10px; font-size: 13px;

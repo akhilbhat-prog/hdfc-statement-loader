@@ -283,7 +283,7 @@ def get_history_page(conn, period: str, page: int, page_size: int = 25) -> dict:
     items = [
         {
             "id":             r[0],
-            "date":           r[1].isoformat() if r[1] else None,
+            "entry_date":     r[1].isoformat() if r[1] else None,
             "time_period":    r[2],
             "merchant":       r[3],
             "entry_text":     r[4],
