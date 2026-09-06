@@ -141,34 +141,46 @@ def get_batch(batch_id):
 # Item edits
 # ---------------------------------------------------------------------------
 
+_ITEM_FIELD_COERCERS = {
+    "category":       lambda v: (v or "").strip(),
+    "subcategory":    lambda v: (v or "").strip(),
+    "type":           lambda v: (v or "").strip(),
+    "cadence":        lambda v: (v or "O").strip(),
+    "divide_by":      lambda v: int(v or 1),
+    "shared_expense": lambda v: (v or "N").strip().upper()[:1],
+    "share_ratio":    lambda v: float(v or 1.0),
+    "amount":         lambda v: float(v) if v is not None else None,
+}
+
+
 @review_bp.route("/api/batches/<int:batch_id>/items/<int:txn_id>", methods=["PATCH"])
 @_require_token
 def update_item(batch_id, txn_id):
     data = request.get_json(force=True)
-    category      = (data.get("category")      or "").strip()
-    subcategory   = (data.get("subcategory")   or "").strip()
-    txn_type      = (data.get("type")          or "").strip()
-    cadence       = (data.get("cadence")       or "O").strip()
-    divide_by     = int(data.get("divide_by") or 1)
-    shared_expense = (data.get("shared_expense") or "N").strip().upper()[:1]
-    share_ratio   = float(data.get("share_ratio") or 1.0)
-    raw_amount    = data.get("amount")
-    amount_val    = float(raw_amount) if raw_amount is not None else None
+
+    columns = []
+    params = []
+    for field, coerce in _ITEM_FIELD_COERCERS.items():
+        if field in data:
+            columns.append(field)
+            params.append(coerce(data[field]))
+
+    if not columns:
+        abort(400, "No recognized fields to update")
+
+    set_clause = ", ".join(f"{col} = %s" for col in columns)
+    params.extend([batch_id, txn_id])
 
     conn = db.get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 UPDATE transaction_batch_items
-                SET category = %s, subcategory = %s, type = %s,
-                    cadence = %s, divide_by = %s, shared_expense = %s, share_ratio = %s,
-                    amount = %s
+                SET {set_clause}
                 WHERE batch_id = %s AND transaction_id = %s
                 """,
-                (category, subcategory, txn_type,
-                 cadence, divide_by, shared_expense, share_ratio, amount_val,
-                 batch_id, txn_id),
+                params,
             )
             if cur.rowcount == 0:
                 abort(404, "Item not found")

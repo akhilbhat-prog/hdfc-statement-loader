@@ -275,6 +275,39 @@ class TestUpdateItem:
             )
         assert resp.status_code == 404
 
+    def test_returns_400_when_no_recognized_fields(self, client, monkeypatch):
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        mock_conn, _ = _make_mock_conn(rowcount=1)
+        with patch("review.db.get_connection", return_value=mock_conn):
+            resp = client.patch("/api/batches/1/items/101", json={"unrelated_field": "x"})
+        assert resp.status_code == 400
+
+    def test_partial_patch_only_updates_submitted_field(self, client, monkeypatch):
+        """A single-field PATCH must only SET that column, not reset the other 7."""
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        mock_conn, mock_cursor = _make_mock_conn(rowcount=1)
+        with patch("review.db.get_connection", return_value=mock_conn):
+            resp = client.patch("/api/batches/1/items/101", json={"type": "Expense"})
+        assert resp.status_code == 200
+        sql, params = mock_cursor.execute.call_args[0]
+        assert "type = %s" in sql
+        for col in ("category", "subcategory", "cadence", "divide_by", "shared_expense", "share_ratio", "amount"):
+            assert f"{col} = %s" not in sql
+        assert list(params) == ["Expense", 1, 101]
+
+    def test_sequential_partial_patches_do_not_clobber_each_other(self, client, monkeypatch):
+        """Regression test: editing category then type must not reset category back to blank."""
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        mock_conn, mock_cursor = _make_mock_conn(rowcount=1)
+        with patch("review.db.get_connection", return_value=mock_conn):
+            client.patch("/api/batches/1/items/101", json={"category": "Food", "subcategory": ""})
+            client.patch("/api/batches/1/items/101", json={"type": "Expense"})
+        first_sql, first_params = mock_cursor.execute.call_args_list[0][0]
+        second_sql, second_params = mock_cursor.execute.call_args_list[1][0]
+        assert "category = %s" in first_sql and "Food" in list(first_params)
+        assert "category = %s" not in second_sql
+        assert "type = %s" in second_sql and "Expense" in list(second_params)
+
 
 # ---------------------------------------------------------------------------
 # DELETE /api/batches/<id>/items/<txn_id>
@@ -429,3 +462,29 @@ class TestCompleteBatch:
         with patch("review.db.get_connection", return_value=mock_conn):
             resp = client.post("/api/batches/999/complete")
         assert resp.status_code == 404
+
+    def test_uses_edited_values_not_predictions(self, client, monkeypatch):
+        """Regression test: complete_batch must pass the human-edited category/type/amount
+        (as returned by the SELECT's COALESCE-to-pred_* fallback) through to
+        insert_data_feed_row unchanged, not silently substitute the ML prediction."""
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        mock_conn = self._make_complete_conn("reviewed")
+        edited_row = (
+            datetime(2026, 6, 1, tzinfo=timezone.utc), "Swiggy order", 450.0,
+            "Food", "Eating Out", "Expense",
+            "Swiggy", None, "UPIREF123",
+            "O", 1, "N", 1.0,
+        )
+        mock_conn.cursor.return_value.fetchall.return_value = [edited_row]
+        with patch("review.db.get_connection", return_value=mock_conn), \
+             patch("review.db.create_data_feed_table"), \
+             patch("review.db.insert_data_feed_row", return_value=1) as mock_insert, \
+             patch("review._trigger_retraining"):
+            resp = client.post("/api/batches/1/complete")
+        assert resp.status_code == 200
+        args, kwargs = mock_insert.call_args
+        # positional signature: (conn, date, entry, subcategory, category, spend_type, amount, ...)
+        assert args[3] == "Eating Out"
+        assert args[4] == "Food"
+        assert args[5] == "Expense"
+        assert args[6] == 450.0
