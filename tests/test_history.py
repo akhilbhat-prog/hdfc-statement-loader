@@ -7,6 +7,7 @@ API route tests mock db.get_connection() to avoid requiring a real DB.
 
 import os
 from datetime import date as _date
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -200,7 +201,11 @@ class TestUpdateHistory:
         mock_conn, _ = _make_mock_conn()
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row",
-                   return_value={"monthly_amount": 100.0, "final_amount": 100.0}):
+                   return_value={
+                       "amount": 100.0, "monthly_amount": 100.0, "final_amount": 100.0,
+                       "category": "Food", "sub_category": "Eating Out", "spend_type": "Expense",
+                       "cadence": "O", "divide_by": 1, "shared_expense": "N", "share_ratio": 1.0,
+                   }):
             resp = client.patch("/api/history/1", json=self._payload)
         assert resp.status_code == 200
         data = resp.get_json()
@@ -222,7 +227,11 @@ class TestUpdateHistory:
         captured = {}
         def fake_update(conn, row_id, fields):
             captured["fields"] = fields
-            return {"monthly_amount": 100.0, "final_amount": 100.0}
+            return {
+                "amount": 100.0, "monthly_amount": 100.0, "final_amount": 100.0,
+                "category": "Food", "sub_category": "Eating Out", "spend_type": "Expense",
+                "cadence": "O", "divide_by": 1, "shared_expense": "N", "share_ratio": 1.0,
+            }
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row", side_effect=fake_update):
             client.patch("/api/history/1", json={**self._payload, "divide_by": 0})
@@ -234,11 +243,57 @@ class TestUpdateHistory:
         captured = {}
         def fake_update(conn, row_id, fields):
             captured["fields"] = fields
-            return {"monthly_amount": 50.0, "final_amount": 25.0}
+            return {
+                "amount": 50.0, "monthly_amount": 50.0, "final_amount": 25.0,
+                "category": "Food", "sub_category": "Eating Out", "spend_type": "Expense",
+                "cadence": "O", "divide_by": 1, "shared_expense": "Y", "share_ratio": 0.5,
+            }
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row", side_effect=fake_update):
             client.patch("/api/history/1", json={**self._payload, "shared_expense": "y"})
         assert captured["fields"]["shared_expense"] == "Y"
+
+    def test_sequential_partial_patches_preserve_untouched_fields_end_to_end(self, client, monkeypatch):
+        """Regression test for the real bug: PATCHing category then spend_type through the
+        real db.update_history_row (not mocked) must not blank out sub_category/spend_type/category
+        along the way, mirroring the actual View-page save-one-field-at-a-time flow."""
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        state = {
+            "amount": Decimal("100.00"), "time_period": "May-2026",
+            "category": "Food", "sub_category": "Eating Out", "spend_type": "Expense",
+            "cadence": "O", "divide_by": 1, "shared_expense": "N", "share_ratio": Decimal("1.0"),
+        }
+
+        def fetchone_side_effect():
+            return (
+                state["amount"], state["time_period"], state["category"], state["sub_category"],
+                state["spend_type"], state["cadence"], state["divide_by"], state["shared_expense"],
+                state["share_ratio"],
+            )
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.side_effect = lambda: fetchone_side_effect()
+        mock_cursor.rowcount = 1
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        def fake_execute(sql, params=None):
+            if sql.strip().startswith("UPDATE data_feed_history"):
+                (state["amount"], state["time_period"], state["category"], state["sub_category"],
+                 state["spend_type"], state["cadence"], state["divide_by"], state["shared_expense"],
+                 state["share_ratio"], _monthly, _final, _row_id) = params
+        mock_cursor.execute.side_effect = fake_execute
+
+        with patch("history.db.get_connection", return_value=mock_conn):
+            client.patch("/api/history/1", json={"category": "Travel"})
+            resp = client.patch("/api/history/1", json={"spend_type": "Investment"})
+
+        assert resp.status_code == 200
+        assert state["category"] == "Travel"
+        assert state["sub_category"] == "Eating Out"
+        assert state["spend_type"] == "Investment"
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +529,11 @@ class TestUpdateHistoryCadenceA:
             return len(insert_calls) + 10
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row",
-                   return_value={"amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0}), \
+                   return_value={
+                       "amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0,
+                       "category": "Expense", "sub_category": "Subscription", "spend_type": "Expense",
+                       "cadence": "A", "divide_by": 3, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
              patch("history.db.get_history_row", return_value=self._existing), \
              patch("history.db.insert_data_feed_row", side_effect=fake_insert):
             resp = client.patch("/api/history/1", json=self._patch_payload)
@@ -493,7 +552,11 @@ class TestUpdateHistoryCadenceA:
             return len(insert_calls)
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row",
-                   return_value={"amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0}), \
+                   return_value={
+                       "amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0,
+                       "category": "Expense", "sub_category": "Subscription", "spend_type": "Expense",
+                       "cadence": "A", "divide_by": 3, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
              patch("history.db.get_history_row", return_value=self._existing), \
              patch("history.db.insert_data_feed_row", side_effect=fake_insert):
             client.patch("/api/history/1", json=self._patch_payload)
@@ -511,7 +574,11 @@ class TestUpdateHistoryCadenceA:
             return len(insert_calls)
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row",
-                   return_value={"amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0}), \
+                   return_value={
+                       "amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0,
+                       "category": "Expense", "sub_category": "Subscription", "spend_type": "Expense",
+                       "cadence": "A", "divide_by": 3, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
              patch("history.db.get_history_row", return_value=self._existing), \
              patch("history.db.insert_data_feed_row", side_effect=fake_insert):
             client.patch("/api/history/1", json=self._patch_payload)
@@ -522,7 +589,11 @@ class TestUpdateHistoryCadenceA:
         mock_conn, _ = _make_mock_conn()
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row",
-                   return_value={"amount": 3000.0, "monthly_amount": 3000.0, "final_amount": 3000.0}), \
+                   return_value={
+                       "amount": 3000.0, "monthly_amount": 3000.0, "final_amount": 3000.0,
+                       "category": "Expense", "sub_category": "Subscription", "spend_type": "Expense",
+                       "cadence": "A", "divide_by": 1, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
              patch("history.db.get_history_row", return_value=self._existing), \
              patch("history.db.insert_data_feed_row") as mock_insert:
             resp = client.patch("/api/history/1", json={**self._patch_payload, "divide_by": 1})
@@ -535,7 +606,11 @@ class TestUpdateHistoryCadenceA:
         mock_conn, _ = _make_mock_conn()
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row",
-                   return_value={"amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0}), \
+                   return_value={
+                       "amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0,
+                       "category": "Expense", "sub_category": "Subscription", "spend_type": "Expense",
+                       "cadence": "M", "divide_by": 3, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
              patch("history.db.get_history_row", return_value=self._existing), \
              patch("history.db.insert_data_feed_row") as mock_insert:
             resp = client.patch("/api/history/1", json={**self._patch_payload, "cadence": "M"})
@@ -556,7 +631,11 @@ class TestUpdateHistoryCadenceA:
             return len(insert_calls)
         with patch("history.db.get_connection", return_value=mock_conn), \
              patch("history.db.update_history_row",
-                   return_value={"amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0}), \
+                   return_value={
+                       "amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0,
+                       "category": "Expense", "sub_category": "Subscription", "spend_type": "Expense",
+                       "cadence": "A", "divide_by": 3, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
              patch("history.db.get_history_row", return_value=dec_existing), \
              patch("history.db.insert_data_feed_row", side_effect=fake_insert):
             client.patch("/api/history/5", json={**self._patch_payload, "divide_by": 3})

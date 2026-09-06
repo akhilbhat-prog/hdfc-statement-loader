@@ -323,21 +323,45 @@ def get_history_row(conn, row_id: int) -> dict | None:
 
 
 def update_history_row(conn, row_id: int, fields: dict) -> dict | None:
-    """Update editable fields of a data_feed_history row. Returns computed amounts or None if not found."""
+    """Update editable fields of a data_feed_history row.
+
+    `fields` may be a partial set — only keys explicitly present are changed;
+    any field not included keeps its current DB value (it is never reset to a
+    default). Returns the full merged row (including computed monthly/final
+    amounts) or None if the row does not exist.
+    """
     with conn.cursor() as cur:
-        new_amount = fields.get("amount")
-        if new_amount is None:
-            cur.execute("SELECT amount FROM data_feed_history WHERE id = %s", (row_id,))
-            row = cur.fetchone()
-            if not row:
-                return None
-            amount = float(row[0]) if row[0] is not None else 0.0
-        else:
-            amount = float(new_amount)
-        divide_by = max(1, int(fields.get("divide_by") or 1))
-        share_ratio = float(fields.get("share_ratio") or 1.0)
+        cur.execute(
+            """
+            SELECT amount, time_period, category, sub_category, spend_type,
+                   cadence, divide_by, shared_expense, share_ratio
+            FROM data_feed_history WHERE id = %s
+            """,
+            (row_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+
+        current = {
+            "amount":         float(row[0]) if row[0] is not None else 0.0,
+            "time_period":    row[1],
+            "category":       row[2],
+            "sub_category":   row[3],
+            "spend_type":     row[4],
+            "cadence":        row[5] or "O",
+            "divide_by":      row[6] or 1,
+            "shared_expense": row[7] or "N",
+            "share_ratio":    float(row[8]) if row[8] is not None else 1.0,
+        }
+        merged = {**current, **{k: v for k, v in fields.items() if k in current}}
+
+        amount = float(merged["amount"]) if merged["amount"] is not None else 0.0
+        divide_by = max(1, int(merged["divide_by"] or 1))
+        share_ratio = float(merged["share_ratio"] or 1.0)
         monthly_amount = round(amount / divide_by, 2)
         final_amount = round(monthly_amount * share_ratio, 2)
+
         cur.execute("""
             UPDATE data_feed_history
                SET amount         = %s,
@@ -354,22 +378,32 @@ def update_history_row(conn, row_id: int, fields: dict) -> dict | None:
              WHERE id = %s
         """, (
             amount,
-            fields.get("time_period"),
-            fields.get("category") or None,
-            fields.get("sub_category") or None,
-            fields.get("spend_type") or None,
-            fields.get("cadence") or "O",
+            merged["time_period"],
+            merged["category"] or None,
+            merged["sub_category"] or None,
+            merged["spend_type"] or None,
+            merged["cadence"] or "O",
             divide_by,
-            fields.get("shared_expense") or "N",
+            merged["shared_expense"] or "N",
             share_ratio,
             monthly_amount,
             final_amount,
             row_id,
         ))
-        if cur.rowcount == 0:
-            return None
     conn.commit()
-    return {"amount": amount, "monthly_amount": monthly_amount, "final_amount": final_amount}
+    return {
+        "amount": amount,
+        "time_period": merged["time_period"],
+        "category": merged["category"],
+        "sub_category": merged["sub_category"],
+        "spend_type": merged["spend_type"],
+        "cadence": merged["cadence"] or "O",
+        "divide_by": divide_by,
+        "shared_expense": merged["shared_expense"] or "N",
+        "share_ratio": share_ratio,
+        "monthly_amount": monthly_amount,
+        "final_amount": final_amount,
+    }
 
 
 def delete_history_row(conn, row_id: int) -> bool:

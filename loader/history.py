@@ -178,18 +178,27 @@ def delete_history(row_id):
 @_require_token
 def update_history(row_id):
     data = request.get_json(force=True)
-    raw_amount = data.get("amount")
-    fields = {
-        "amount":         float(raw_amount) if raw_amount is not None else None,
-        "time_period":    (data.get("time_period") or "").strip() or None,
-        "category":       (data.get("category") or "").strip(),
-        "sub_category":   (data.get("sub_category") or "").strip(),
-        "spend_type":     (data.get("spend_type") or "").strip(),
-        "cadence":        (data.get("cadence") or "O").strip(),
-        "divide_by":      max(1, int(data.get("divide_by") or 1)),
-        "shared_expense": (data.get("shared_expense") or "N").strip().upper()[:1],
-        "share_ratio":    float(data.get("share_ratio") or 1.0),
-    }
+    fields = {}
+    if "amount" in data:
+        raw_amount = data.get("amount")
+        fields["amount"] = float(raw_amount) if raw_amount is not None else None
+    if "time_period" in data:
+        fields["time_period"] = (data.get("time_period") or "").strip() or None
+    if "category" in data:
+        fields["category"] = (data.get("category") or "").strip()
+    if "sub_category" in data:
+        fields["sub_category"] = (data.get("sub_category") or "").strip()
+    if "spend_type" in data:
+        fields["spend_type"] = (data.get("spend_type") or "").strip()
+    if "cadence" in data:
+        fields["cadence"] = (data.get("cadence") or "O").strip()
+    if "divide_by" in data:
+        fields["divide_by"] = max(1, int(data.get("divide_by") or 1))
+    if "shared_expense" in data:
+        fields["shared_expense"] = (data.get("shared_expense") or "N").strip().upper()[:1]
+    if "share_ratio" in data:
+        fields["share_ratio"] = float(data.get("share_ratio") or 1.0)
+
     conn = db.get_connection()
     try:
         result = db.update_history_row(conn, row_id, fields)
@@ -197,13 +206,13 @@ def update_history(row_id):
             abort(404, "Row not found")
 
         rows_created = 0
-        if fields["cadence"] == "A" and fields["divide_by"] > 1:
+        if result["cadence"] == "A" and result["divide_by"] > 1:
             existing = db.get_history_row(conn, row_id)
             if existing and existing.get("entry_date"):
                 base_date = existing["entry_date"]
-                divide_by = fields["divide_by"]
-                share_ratio = fields["share_ratio"]
-                shared_expense = fields["shared_expense"]
+                divide_by = result["divide_by"]
+                share_ratio = result["share_ratio"]
+                shared_expense = result["shared_expense"]
                 monthly_amount = result["monthly_amount"]
                 final_amount = result["final_amount"]
                 entry_text = existing["entry_text"]
@@ -225,9 +234,9 @@ def update_history(row_id):
                 conn.commit()
 
                 # Create new rows for months 2..divide_by
-                sub_category = (data.get("sub_category") or "").strip() or None
-                category = (data.get("category") or "").strip() or None
-                spend_type = (data.get("spend_type") or "").strip() or None
+                sub_category = result["sub_category"] or None
+                category = result["category"] or None
+                spend_type = result["spend_type"] or None
 
                 for i in range(1, divide_by):
                     m = base_date.month - 1 + i
@@ -253,7 +262,7 @@ def update_history(row_id):
                         )
 
         # Sync the updated row itself to shared_transactions
-        new_shared = fields["shared_expense"]
+        new_shared = result["shared_expense"]
         if new_shared == 'Y':
             with conn.cursor() as cur:
                 cur.execute(
@@ -263,9 +272,9 @@ def update_history(row_id):
                 dfh = cur.fetchone()
             if dfh and dfh[0] and dfh[0] >= _SHARED_SCOPE_START:
                 db.upsert_shared_transaction(
-                    conn, row_id, result["amount"], result["monthly_amount"], fields["share_ratio"],
-                    dfh[0], dfh[1], fields.get("category") or None,
-                    fields.get("sub_category") or None, dfh[2],
+                    conn, row_id, result["amount"], result["monthly_amount"], result["share_ratio"],
+                    dfh[0], dfh[1], result["category"] or None,
+                    result["sub_category"] or None, dfh[2],
                 )
         else:
             db.delete_shared_transaction(conn, row_id)

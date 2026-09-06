@@ -70,30 +70,56 @@ class TestFindDuplicateTransaction:
 # ---------------------------------------------------------------------------
 
 class TestUpdateHistoryRow:
+    _FULL_ROW = (Decimal("100.00"), "May-2026", "Food", "Eating Out", "Expense", "O", 1, "N", Decimal("1.0"))
+
     def test_normal_update_returns_computed_amounts(self):
-        mock_conn, _ = _make_mock_conn(fetchone=(Decimal("100.00"),), rowcount=1)
+        mock_conn, _ = _make_mock_conn(fetchone=self._FULL_ROW, rowcount=1)
         result = db.update_history_row(mock_conn, 1, {"divide_by": 2, "share_ratio": 0.5})
-        assert result == {"amount": 100.0, "monthly_amount": 50.0, "final_amount": 25.0}
+        assert result["amount"] == 100.0
+        assert result["monthly_amount"] == 50.0
+        assert result["final_amount"] == 25.0
+        assert result["divide_by"] == 2
+        assert result["share_ratio"] == 0.5
 
     def test_divide_by_zero_clamped_to_one(self):
         """divide_by=0 is silently clamped to 1 via max(1, int(0 or 1))."""
-        mock_conn, _ = _make_mock_conn(fetchone=(Decimal("200.00"),), rowcount=1)
+        row = (Decimal("200.00"), "May-2026", "Food", "Eating Out", "Expense", "O", 1, "N", Decimal("1.0"))
+        mock_conn, _ = _make_mock_conn(fetchone=row, rowcount=1)
         result = db.update_history_row(mock_conn, 1, {"divide_by": 0, "share_ratio": 1.0})
-        assert result == {"amount": 200.0, "monthly_amount": 200.0, "final_amount": 200.0}
+        assert result["amount"] == 200.0
+        assert result["monthly_amount"] == 200.0
+        assert result["final_amount"] == 200.0
 
     def test_share_ratio_none_defaults_to_one(self):
-        mock_conn, _ = _make_mock_conn(fetchone=(Decimal("150.00"),), rowcount=1)
+        row = (Decimal("150.00"), "May-2026", "Food", "Eating Out", "Expense", "O", 1, "N", Decimal("1.0"))
+        mock_conn, _ = _make_mock_conn(fetchone=row, rowcount=1)
         result = db.update_history_row(mock_conn, 1, {"divide_by": 1, "share_ratio": None})
-        assert result == {"amount": 150.0, "monthly_amount": 150.0, "final_amount": 150.0}
+        assert result["amount"] == 150.0
+        assert result["monthly_amount"] == 150.0
+        assert result["final_amount"] == 150.0
 
     def test_row_not_found_returns_none(self):
         mock_conn, _ = _make_mock_conn(fetchone=None)
         assert db.update_history_row(mock_conn, 999, {"divide_by": 1}) is None
 
     def test_commit_called_on_success(self):
-        mock_conn, _ = _make_mock_conn(fetchone=(Decimal("50.00"),), rowcount=1)
+        row = (Decimal("50.00"), "May-2026", "Food", "Eating Out", "Expense", "O", 1, "N", Decimal("1.0"))
+        mock_conn, _ = _make_mock_conn(fetchone=row, rowcount=1)
         db.update_history_row(mock_conn, 1, {})
         mock_conn.commit.assert_called_once()
+
+    def test_partial_update_preserves_untouched_fields(self):
+        """Regression test: PATCHing only spend_type must not blank out category/sub_category."""
+        row = (Decimal("100.00"), "May-2026", "Food", "Eating Out", "Expense", "O", 1, "N", Decimal("1.0"))
+        mock_conn, mock_cursor = _make_mock_conn(fetchone=row, rowcount=1)
+        result = db.update_history_row(mock_conn, 1, {"spend_type": "Investment"})
+        assert result["category"] == "Food"
+        assert result["sub_category"] == "Eating Out"
+        assert result["spend_type"] == "Investment"
+        update_sql, update_params = mock_cursor.execute.call_args_list[-1][0]
+        assert "Food" in update_params
+        assert "Eating Out" in update_params
+        assert "Investment" in update_params
 
 
 # ---------------------------------------------------------------------------
