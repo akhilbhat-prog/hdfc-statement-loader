@@ -305,10 +305,10 @@ def get_history_page(conn, period: str, page: int, page_size: int = 25) -> dict:
 
 
 def get_history_row(conn, row_id: int) -> dict | None:
-    """Fetch entry_text, entry_date, and time_period for a single data_feed_history row."""
+    """Fetch entry_text, entry_date, time_period, and merchant for a single data_feed_history row."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, entry_text, entry_date, time_period FROM data_feed_history WHERE id = %s",
+            "SELECT id, entry_text, entry_date, time_period, merchant FROM data_feed_history WHERE id = %s",
             (row_id,),
         )
         row = cur.fetchone()
@@ -319,6 +319,7 @@ def get_history_row(conn, row_id: int) -> dict | None:
         "entry_text":   row[1],
         "entry_date":   row[2],
         "time_period":  row[3],
+        "merchant":     row[4],
     }
 
 

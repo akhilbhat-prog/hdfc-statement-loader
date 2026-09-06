@@ -332,9 +332,12 @@ class TestInsertDataFeedRow:
 
 class TestGetHistoryRow:
     def test_returns_dict_when_found(self):
-        mock_conn, _ = _make_mock_conn(fetchone=(5, "Grocery run", date(2026, 5, 1), "May-2026"))
+        mock_conn, _ = _make_mock_conn(fetchone=(5, "Grocery run", date(2026, 5, 1), "May-2026", "BigBasket"))
         result = db.get_history_row(mock_conn, 5)
-        assert result == {"id": 5, "entry_text": "Grocery run", "entry_date": date(2026, 5, 1), "time_period": "May-2026"}
+        assert result == {
+            "id": 5, "entry_text": "Grocery run", "entry_date": date(2026, 5, 1),
+            "time_period": "May-2026", "merchant": "BigBasket",
+        }
 
     def test_returns_none_when_not_found(self):
         mock_conn, _ = _make_mock_conn(fetchone=None)

@@ -507,6 +507,7 @@ class TestUpdateHistoryCadenceA:
         "entry_text": "Annual subscription",
         "entry_date": _date(2026, 5, 1),
         "time_period": "May-2026",
+        "merchant": "Acme Corp",
     }
     _patch_payload = {
         "amount": 3000.0,
@@ -542,6 +543,34 @@ class TestUpdateHistoryCadenceA:
         assert data["ok"] is True
         assert data["rows_created"] == 2
         assert len(insert_calls) == 2
+
+    def test_delete_scoped_to_merchant_and_category_not_just_entry_text(self, client, monkeypatch):
+        """Regression test: the future-rows cleanup must not delete sibling recurring
+        items that happen to share the same entry_text (e.g. multiple subscriptions
+        all filed under "Online Learning") - it must also match merchant/category/
+        sub_category. This is the bug that let fixing one subscription silently wipe
+        out another's future rows with no replacement."""
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        mock_conn, mock_cursor = _make_mock_conn()
+        with patch("history.db.get_connection", return_value=mock_conn), \
+             patch("history.db.update_history_row",
+                   return_value={
+                       "amount": 1000.0, "monthly_amount": 1000.0, "final_amount": 1000.0,
+                       "category": "Expense", "sub_category": "Subscription", "spend_type": "Expense",
+                       "cadence": "A", "divide_by": 3, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
+             patch("history.db.get_history_row", return_value=self._existing), \
+             patch("history.db.insert_data_feed_row", return_value=99) as mock_insert:
+            client.patch("/api/history/1", json=self._patch_payload)
+        delete_calls = [c for c in mock_cursor.execute.call_args_list if "DELETE FROM data_feed_history" in c[0][0]]
+        assert len(delete_calls) == 1
+        delete_sql, delete_params = delete_calls[0][0]
+        assert "merchant IS NOT DISTINCT FROM" in delete_sql
+        assert "category IS NOT DISTINCT FROM" in delete_sql
+        assert "sub_category IS NOT DISTINCT FROM" in delete_sql
+        assert self._existing["merchant"] in delete_params
+        # merchant must also be carried through to the recreated rows
+        assert mock_insert.call_args.kwargs["merchant"] == self._existing["merchant"]
 
     def test_future_row_entry_dates_are_first_of_month(self, client, monkeypatch):
         monkeypatch.delenv("ADMIN_TOKEN", raising=False)
@@ -646,6 +675,7 @@ class TestUpdateHistoryCadenceA:
         dec_existing = {
             "id": 5, "entry_text": "Annual fee",
             "entry_date": _date(2026, 12, 1), "time_period": "Dec-2026",
+            "merchant": "Acme Corp",
         }
         insert_calls = []
         def fake_insert(conn, entry_date, *args, **kwargs):

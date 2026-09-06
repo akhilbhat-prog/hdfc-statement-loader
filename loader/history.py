@@ -218,6 +218,10 @@ def update_history(row_id):
                 monthly_amount = result["monthly_amount"]
                 final_amount = result["final_amount"]
                 entry_text = existing["entry_text"]
+                merchant = existing["merchant"]
+                sub_category = result["sub_category"] or None
+                category = result["category"] or None
+                spend_type = result["spend_type"] or None
 
                 # Build all 11 possible future time_periods (covers divide_by up to 12)
                 future_periods = []
@@ -226,20 +230,25 @@ def update_history(row_id):
                     fp = _date(base_date.year + m // 12, m % 12 + 1, 1)
                     future_periods.append(fp.strftime("%b-%Y"))
 
-                # Delete any pre-existing future rows for this entry_text in those periods
+                # Delete any pre-existing future rows for this *same* recurring item
+                # (entry_text alone is not unique - e.g. "Online Learning" is shared by
+                # several distinct subscriptions, so match on merchant/category/sub_category
+                # too to avoid deleting sibling items that happen to share the label)
                 with conn.cursor() as cur:
                     placeholders = ",".join(["%s"] * len(future_periods))
                     cur.execute(
-                        f"DELETE FROM data_feed_history WHERE entry_text = %s AND id != %s AND time_period IN ({placeholders})",
-                        [entry_text, row_id] + future_periods,
+                        f"""
+                        DELETE FROM data_feed_history
+                        WHERE entry_text = %s AND id != %s AND time_period IN ({placeholders})
+                          AND merchant IS NOT DISTINCT FROM %s
+                          AND category IS NOT DISTINCT FROM %s
+                          AND sub_category IS NOT DISTINCT FROM %s
+                        """,
+                        [entry_text, row_id] + future_periods + [merchant, category, sub_category],
                     )
                 conn.commit()
 
                 # Create new rows for months 2..divide_by
-                sub_category = result["sub_category"] or None
-                category = result["category"] or None
-                spend_type = result["spend_type"] or None
-
                 for i in range(1, divide_by):
                     m = base_date.month - 1 + i
                     period_date = _date(base_date.year + m // 12, m % 12 + 1, 1)
@@ -247,6 +256,7 @@ def update_history(row_id):
                         conn,
                         period_date, entry_text, sub_category, category, spend_type,
                         monthly_amount,
+                        merchant=merchant,
                         time_period=period_date.strftime("%b-%Y"),
                         cadence="A",
                         divide_by=divide_by,
