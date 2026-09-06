@@ -618,6 +618,28 @@ class TestUpdateHistoryCadenceA:
         mock_insert.assert_not_called()
         assert resp.get_json()["rows_created"] == 0
 
+    def test_unrelated_field_edit_does_not_trigger_expansion(self, client, monkeypatch):
+        """Regression test: PATCHing sub_category on a row that already has cadence='A',
+        divide_by>1 must NOT delete/regenerate future months' rows. This is the exact
+        incident where fixing a miscategorized recurring row destroyed 9 months of
+        correct data and replaced it with wrongly-divided amounts."""
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        mock_conn, _ = _make_mock_conn()
+        with patch("history.db.get_connection", return_value=mock_conn), \
+             patch("history.db.update_history_row",
+                   return_value={
+                       "amount": 21000.0, "monthly_amount": 1750.0, "final_amount": 1750.0,
+                       "category": "Bills", "sub_category": "Tax", "spend_type": "Expense",
+                       "cadence": "A", "divide_by": 12, "shared_expense": "N", "share_ratio": 1.0,
+                   }), \
+             patch("history.db.get_history_row") as mock_get_row, \
+             patch("history.db.insert_data_feed_row") as mock_insert:
+            resp = client.patch("/api/history/1", json={"sub_category": "Tax"})
+        assert resp.status_code == 200
+        assert resp.get_json()["rows_created"] == 0
+        mock_get_row.assert_not_called()
+        mock_insert.assert_not_called()
+
     def test_year_wrap_creates_correct_periods(self, client, monkeypatch):
         monkeypatch.delenv("ADMIN_TOKEN", raising=False)
         mock_conn, _ = _make_mock_conn()

@@ -206,7 +206,9 @@ def update_history(row_id):
             abort(404, "Row not found")
 
         rows_created = 0
-        if result["cadence"] == "A" and result["divide_by"] > 1:
+        expansion_relevant_fields = {"amount", "cadence", "divide_by"}
+        if (expansion_relevant_fields & fields.keys()
+                and result["cadence"] == "A" and result["divide_by"] > 1):
             existing = db.get_history_row(conn, row_id)
             if existing and existing.get("entry_date"):
                 base_date = existing["entry_date"]
